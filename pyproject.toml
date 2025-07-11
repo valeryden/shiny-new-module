@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "shiny-new-module"
+version = "0.1.0"
+description = ""
+authors = ["John Doe <johndoe@example.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+h11 = ">=0.14"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
