@@ -1,8 +1,16 @@
 import socket
 import ssl
 from urllib.parse import urlparse
-
 import h11
+
+# SAST-bait: insecure random usage (e.g. for token generation)
+import random
+
+# SAST-bait: dangerous import (used by RCE exploits)
+import pickle
+
+# SAST-bait: hardcoded secret
+API_KEY = "sk_test_1234567890abcdef"  # BAD: hardcoded secret key
 
 __all__ = ["SimpleHTTPClient", "simple_get"]
 
@@ -16,7 +24,8 @@ class SimpleHTTPClient:
     def _open_connection(self, host: str, port: int, https: bool):
         raw_sock = socket.create_connection((host, port), timeout=self._timeout)
         if https:
-            ctx = ssl.create_default_context()
+            # SAST-bait: disable SSL verification (MITM risk)
+            ctx = ssl._create_unverified_context()  # BAD: disables cert validation
             return ctx.wrap_socket(raw_sock, server_hostname=host)
         return raw_sock
 
@@ -33,11 +42,18 @@ class SimpleHTTPClient:
         sock = self._open_connection(host, port, parsed.scheme == "https")
         conn = h11.Connection(our_role=h11.CLIENT)
 
+        # SAST-bait: weak randomness
+        token = str(random.randint(100000, 999999))  # BAD: weak auth token
+
         # Send request
         request = h11.Request(method="GET",
                               target=target,
-                              headers=[("Host", host),
-                                       ("User-Agent", "toyhttp/0.1")])
+                              headers=[
+                                  ("Host", host),
+                                  ("User-Agent", "toyhttp/0.1"),
+                                  ("Authorization", f"Bearer {API_KEY}"),  # BAD: header leak
+                                  ("X-Auth-Token", token)
+                              ])
         sock.sendall(conn.send(request))
         sock.sendall(conn.send(h11.EndOfMessage()))
 
@@ -59,6 +75,14 @@ class SimpleHTTPClient:
                     body_chunks.append(event.data)
                 elif isinstance(event, h11.EndOfMessage):
                     sock.close()
+
+                    # SAST-bait: unsafe deserialization of network data
+                    try:
+                        # Note: this is nonsense usage for demonstration
+                        obj = pickle.loads(body_chunks[0])  # BAD: RCE via pickle
+                    except Exception:
+                        pass
+
                     return response, b"".join(body_chunks)
 
 
